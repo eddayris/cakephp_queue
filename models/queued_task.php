@@ -8,13 +8,13 @@
  * @link http://github.com/MSeven/cakephp_queue
  */
 class QueuedTask extends AppModel {
-	
+
 	public $name = 'QueuedTask';
-	
+
 	public $rateHistory = array();
-	
+
 	public $exit = false;
-	
+
 	public $_findMethods = array(
 		'progress' => true
 	);
@@ -29,7 +29,7 @@ class QueuedTask extends AppModel {
 	 * @return bool success
 	 */
 	public function createJob($jobName, $data, $notBefore = null, $group = null, $reference = null) {
-		
+
 		$data = array(
 			'jobtype' => $jobName,
 			'data' => serialize($data),
@@ -57,7 +57,7 @@ class QueuedTask extends AppModel {
 	public function requestJob($capabilities, $group = null) {
 		$idlist = array();
 		$wasFetched = array();
-		
+
 		$findConf = array(
 			'conditions' => array(
 				'completed' => null,
@@ -74,11 +74,11 @@ class QueuedTask extends AppModel {
 			),
 			'limit' => 3
 		);
-		
+
 		if (!is_null($group)) {
 			$findConf['conditions']['group'] = $group;
 		}
-		
+
 		// generate the task specific conditions.
 		foreach ($capabilities as $task) {
 			$tmp = array(
@@ -127,9 +127,13 @@ class QueuedTask extends AppModel {
 			if (is_array($data)) {
 				// if the job had an existing fetched timestamp, increment the failure counter
 				if (in_array($data[$this->name]['id'], $wasFetched)) {
-					$data[$this->name]['failed']++;
-					$data[$this->name]['failure_message'] = 'Restart after timeout';
-					$this->save($data);
+					$db =& $this->getDataSource();
+					$this->updateAll(array(
+						'failed' => "failed + 1",
+						'failure_message' => $db->value('Restart after timeout', 'failure_message')
+					), array(
+						'id' => $data[$this->name]['id']
+					));
 				}
 				//save last fetch by type for Rate Limiting.
 				$this->rateHistory[$data[$this->name]['jobtype']] = time();
@@ -233,12 +237,12 @@ class QueuedTask extends AppModel {
 		$this->deleteAll(array(
 			'completed < ' => date('Y-m-d H:i:s', time() - Configure::read('queue.cleanuptimeout'))
 		));
-	
+
 	}
 
 	protected function _findProgress($state, $query = array(), $results = array()) {
 		if ($state == 'before') {
-			
+
 			$query['fields'] = array(
 				$this->alias . '.reference',
 				'(CASE WHEN ' . $this->alias . '.notbefore > NOW() THEN \'NOT_READY\' WHEN ' . $this->alias . '.fetched IS NULL THEN \'NOT_STARTED\' WHEN ' . $this->alias . '.fetched IS NOT NULL AND ' . $this->alias . '.completed IS NULL AND ' . $this->alias . '.failed = 0 THEN \'IN_PROGRESS\' WHEN ' . $this->alias . '.fetched IS NOT NULL AND ' . $this->alias . '.completed IS NULL AND ' . $this->alias . '.failed > 0 THEN \'FAILED\' WHEN ' . $this->alias . '.fetched IS NOT NULL AND ' . $this->alias . '.completed IS NOT NULL THEN \'COMPLETED\' ELSE \'UNKNOWN\' END) AS status',
@@ -279,7 +283,7 @@ class QueuedTask extends AppModel {
     where completed is null
     group by data
     having count(id) > 1');
-		
+
 		$start = 0;
 		$x = array_keys($x);
 		while ($start <= count($x)) {
@@ -289,7 +293,7 @@ class QueuedTask extends AppModel {
 			debug(array_slice($x, $start, 10));
 			$start = $start + 100;
 		}
-	
+
 	}
 }
 ?>
